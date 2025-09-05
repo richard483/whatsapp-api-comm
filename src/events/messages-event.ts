@@ -41,7 +41,6 @@ async function handleMessagesUpsert(sock: WASocket, message: WAMessage) {
     });
 
     if (!message.key.fromMe) {
-        console.log('#handleMessagesUpsert - received message: ', message);
         const normalized = normalizedMsg;
         const whatsAppId: string = message.key.remoteJid ?? '';
 
