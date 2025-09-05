@@ -40,7 +40,7 @@ async function handleMessagesUpsert(sock: WASocket, message: WAMessage) {
         isGroup,
     });
 
-    if (!message.key.fromMe) {
+    if (!message.key.fromMe && !isGroup) {
         const normalized = normalizedMsg;
         const whatsAppId: string = message.key.remoteJid ?? '';
 
