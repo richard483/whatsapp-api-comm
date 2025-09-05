@@ -2,9 +2,10 @@ import { MessageUpsertType, WAMessage, WASocket } from "baileys";
 import { Messages } from "../model/message";
 
 
-async function textHandler(text: string, whatsAppId: string): Promise<{ reply: string, mentions?: string[] }> {
+async function textHandler(text: string, whatsAppId: string, messageTimestamp: Long | number): Promise<{ reply: string, mentions?: string[] }> {
     if (text === 'ping') {
-        return { reply: "pong" };
+        const latency = Date.now() - Number(messageTimestamp);
+        return { reply: `pong, your latency is ${latency}ms` };
     } else if (text === 'hi' || text === 'hello') {
         return { reply: `Hello, how can I help you?`, mentions: [whatsAppId] };
     }
@@ -21,11 +22,18 @@ function normalizedMessage(message: WAMessage) {
 }
 
 async function handleMessagesUpsert(sock: WASocket, message: WAMessage) {
+
+    const normalizedMsg = normalizedMessage(message)
+
+    if (normalizedMsg === '') {
+        return;
+    }
+
     const isGroup = message.key.remoteJid?.endsWith('@g.us') ?? false;
 
     await Messages.create({
         timestamp: message.messageTimestamp,
-        message: normalizedMessage(message)?.toString().split('@')[0] ?? '',
+        message: normalizedMsg,
         pushName: message.pushName,
         senderPn: message.key.participantPn?.split('@')[0] ?? message.key.remoteJid?.split('@')[0] ?? '',
         groupId: isGroup ? message.key.remoteJid?.split('@')[0] : null,
@@ -34,12 +42,12 @@ async function handleMessagesUpsert(sock: WASocket, message: WAMessage) {
 
     if (!message.key.fromMe) {
         console.log('#handleMessagesUpsert - received message: ', message);
-        const normalized = normalizedMessage(message);
+        const normalized = normalizedMsg;
         const whatsAppId: string = message.key.remoteJid ?? '';
 
         // await sock.readMessages([messages[0].key]);
 
-        let replyMessage = await textHandler(normalized ?? '', whatsAppId);
+        let replyMessage = await textHandler(normalized ?? '', whatsAppId, message.messageTimestamp ?? 0);
 
         if (replyMessage.reply === '' || replyMessage.reply === null || replyMessage.reply === undefined) {
             return;
