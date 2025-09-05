@@ -4,4 +4,5 @@ KubePipeline() {
 	dockerImage = "karasu-bot:latest"
 	projectName = "karasu-bot"
   externalEndpointsIp = "10.10.10.22"
+  appPort = "80"
 }
