@@ -58,9 +58,10 @@ async function handleMessagesUpsert(sock: WASocket, message: WAMessage) {
 
 function handleMessagesEvent(sock: WASocket) {
     sock.ev.on('messages.upsert', async (event) => {
-        event.messages.forEach(async message => {
-            await handleMessagesUpsert(sock, message);
-        });
+        // event.messages.forEach(async message => {
+        //     await handleMessagesUpsert(sock, message);
+        // });
+        await handleMessagesUpsert(sock, event.messages[0]);
 
     });
 }
