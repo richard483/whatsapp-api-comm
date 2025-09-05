@@ -6,9 +6,9 @@ function handleCredsEvent(sock: WASocket, saveCreds: () => Promise<void>) {
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update
-        console.log('New QR code received, scan please!');
+        console.log('#handleCredsEvent - connection update', connection, lastDisconnect);
         if (qr) {
-            console.log(await QRCode.generate(qr, { small: true }));
+            console.log(QRCode.generate(qr, { small: true }));
         }
     });
 }
