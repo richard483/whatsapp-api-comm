@@ -35,7 +35,7 @@ async function handleMessagesUpsert(sock: WASocket, message: WAMessage) {
         timestamp: message.messageTimestamp,
         message: normalizedMsg,
         pushName: message.pushName,
-        senderPn: message.key.participantPn?.split('@')[0] ?? message.key.remoteJid?.split('@')[0] ?? '',
+        senderPn: message.key.fromMe ? 'SELF' : message.key.participantPn?.split('@')[0] ?? message.key.remoteJid?.split('@')[0] ?? '',
         groupId: isGroup ? message.key.remoteJid?.split('@')[0] : null,
         isGroup,
     });
