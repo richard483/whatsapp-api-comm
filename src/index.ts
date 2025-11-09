@@ -1,11 +1,17 @@
 import { connectToWhatsApp } from "./config/baileys-config";
 import { sequelize } from "./config/sequelize-config";
 
-connectToWhatsApp();
+(async () => {
+  try {
+    await sequelize.authenticate();
+    console.log('#main-process - DB connection established.');
+    // Ensure DB schema is created
+    await sequelize.sync();
+    console.log('#main-process - DB synced.');
+  } catch (error) {
+    console.error('#main-process - Unable to connect/sync database:', error);
+  }
 
-try {
-  sequelize.authenticate();
-  console.log('#main-process - Connection has been established successfully.');
-} catch (error) {
-  console.error('#main-process - Unable to connect to the database:', error);
-}
+  // start WhatsApp connection after DB is ready
+  await connectToWhatsApp();
+})();

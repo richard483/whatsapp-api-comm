@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
-    "baileys": "^6.7.19",
+    "baileys": "^6.7.21",
     "dotenv": "^17.2.2",
     "pg": "^8.16.3",
     "pg-hstore": "^2.3.4",
