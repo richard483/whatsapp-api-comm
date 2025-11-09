@@ -27,21 +27,30 @@ function normalizedMessage(message: WAMessage) {
     return convMsg + extendedTextMsg + captionMsg + docMsg + docWithCaptionMsg;
 }
 
-async function ensureContact(sock: WASocket, jid: string, displayName?: string | null, fromMe?: boolean): Promise<string | null> {
+async function ensureContact(sock: WASocket, jid: string, displayName?: string | null, fromMe?: boolean, phoneNumber?: string | null): Promise<string | null> {
     // Accept both classic & LID JIDs
     if (!jid || !(jid.endsWith('@s.whatsapp.net') || jid.endsWith('@lid'))) return null;
 
     const existing = await Contacts.findOne({ where: { whatsapp_jid: jid } });
     if (existing) {
         // If we previously stored without a display name & now have one (and it's not from our own message), update it once
+        const updates: Record<string, any> = {};
         if (!fromMe && displayName && !existing.display_name) {
-            await existing.update({ display_name: displayName });
+            updates.display_name = displayName;
+        }
+        // If phone number is available and not set, update it
+        if (phoneNumber && !existing.phone_number) {
+            updates.phone_number = phoneNumber;
+        }
+        if (Object.keys(updates).length > 0) {
+            await existing.update(updates);
         }
         contactCache.add(jid);
         return existing.id;
     }
 
-    const phone = jid.split('@')[0] || null;
+    // Prefer explicit phoneNumber, fallback to extracting from JID
+    const phone = phoneNumber || (jid.split('@')[0] || null);
     // Don't trust pushName on outbound messages (it will be our bot's own name). Use null in that case.
     const resolvedName = fromMe ? null : (displayName ?? null);
 
@@ -158,10 +167,11 @@ async function persistMessage(sock: WASocket, message: WAMessage) {
     if (isGroup) {
         groupId = await ensureGroup(sock, remoteJid);
         if (participantJid) {
-            senderContactId = await ensureContact(sock, participantJid, message.pushName, !!message.key.fromMe);
+            // Use participantPn if available for phone number
+            senderContactId = await ensureContact(sock, participantJid, message.pushName, !!message.key.fromMe, message.key.participantPn || null);
         }
     } else {
-        contactId = await ensureContact(sock, remoteJid, message.pushName, !!message.key.fromMe);
+        contactId = await ensureContact(sock, remoteJid, message.pushName, !!message.key.fromMe, message.key.participantPn || null);
     }
 
     try {
