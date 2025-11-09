@@ -9,6 +9,7 @@ async function connectToWhatsApp() {
     syncFullHistory: true,
     // emulate desktop for larger history chunks
     browser: Browsers.macOS('Desktop'),
+    version: [2, 3000, 1025190524],
   });
 
   handleEvent(sock, connectToWhatsApp, saveCreds);

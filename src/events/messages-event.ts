@@ -27,44 +27,78 @@ function normalizedMessage(message: WAMessage) {
     return convMsg + extendedTextMsg + captionMsg + docMsg + docWithCaptionMsg;
 }
 
-async function ensureContact(jid: string, displayName?: string | null): Promise<string | null> {
-    if (!jid || !jid.endsWith('@s.whatsapp.net')) return null;
-    if (contactCache.has(jid)) {
-        const existing = await Contacts.findOne({ where: { whatsapp_jid: jid }, attributes: ['id'] });
-        return existing?.id ?? null;
+async function ensureContact(sock: WASocket, jid: string, displayName?: string | null, fromMe?: boolean): Promise<string | null> {
+    // Accept both classic & LID JIDs
+    if (!jid || !(jid.endsWith('@s.whatsapp.net') || jid.endsWith('@lid'))) return null;
+
+    const existing = await Contacts.findOne({ where: { whatsapp_jid: jid } });
+    if (existing) {
+        // If we previously stored without a display name & now have one (and it's not from our own message), update it once
+        if (!fromMe && displayName && !existing.display_name) {
+            await existing.update({ display_name: displayName });
+        }
+        contactCache.add(jid);
+        return existing.id;
     }
+
     const phone = jid.split('@')[0] || null;
-    const [contact] = await Contacts.findOrCreate({
-        where: { whatsapp_jid: jid },
-        defaults: {
-            whatsapp_jid: jid,
-            phone_number: phone,
-            display_name: displayName ?? null,
-            is_business: false,
-            additional_data: null,
-        },
+    // Don't trust pushName on outbound messages (it will be our bot's own name). Use null in that case.
+    const resolvedName = fromMe ? null : (displayName ?? null);
+
+    try {
+        // Optionally verify existence (not strictly needed; ignore result)
+        await sock.onWhatsApp(jid).catch(() => undefined);
+    } catch {
+        // ignore
+    }
+
+    const contact = await Contacts.create({
+        whatsapp_jid: jid,
+        phone_number: phone,
+        display_name: resolvedName,
+        is_business: false,
+        additional_data: null,
     });
     contactCache.add(jid);
     return contact.id;
 }
 
-async function ensureGroup(jid: string): Promise<string | null> {
+async function ensureGroup(sock: WASocket, jid: string): Promise<string | null> {
     if (!jid || !jid.endsWith('@g.us')) return null;
-    if (groupCache.has(jid)) {
-        const existing = await Groups.findOne({ where: { whatsapp_jid: jid }, attributes: ['id'] });
-        return existing?.id ?? null;
-    }
-    const [group] = await Groups.findOrCreate({
-        where: { whatsapp_jid: jid },
-        defaults: {
+    let group = await Groups.findOne({ where: { whatsapp_jid: jid } });
+    if (!group) {
+        group = await Groups.create({
             whatsapp_jid: jid,
             subject: null,
             description: null,
             owner_jid: null,
             participant_count: null,
             additional_data: null,
-        },
-    });
+        });
+    }
+    // Enrichment: fetch metadata if missing critical fields
+    if (!group.subject || !group.participant_count || !group.owner_jid) {
+        try {
+            const meta: any = await sock.groupMetadata(jid);
+            await group.update({
+                subject: meta.subject || group.subject,
+                description: meta.desc || group.description,
+                owner_jid: meta.owner || group.owner_jid,
+                participant_count: (meta.size ?? (Array.isArray(meta.participants) ? meta.participants.length : null)) || group.participant_count,
+                additional_data: {
+                    ...(group.additional_data || {}),
+                    restrict: meta.restrict ?? null,
+                    announce: meta.announce ?? null,
+                    joinApprovalMode: meta.joinApprovalMode ?? null,
+                    isCommunity: meta.isCommunity ?? null,
+                    isCommunityAnnounce: meta.isCommunityAnnounce ?? null,
+                    fetched_at: new Date().toISOString(),
+                },
+            });
+        } catch {
+            // ignore metadata fetch failures
+        }
+    }
     groupCache.add(jid);
     return group.id;
 }
@@ -106,18 +140,28 @@ async function persistMessage(sock: WASocket, message: WAMessage) {
     const messageType = getContentType((message.message || undefined) as any) || null;
     const whatsappMessageId = message.key.id || `${Date.now()}-${Math.random()}`; // fallback safety
 
+    // Ignore events where both message_type and message_text are effectively null/empty
+    if (!messageType && (!normalizedMsg || normalizedMsg.trim().length === 0)) {
+        return;
+    }
+
+    // Drop protocolMessage events (edits/deletes/ephemeral toggles, etc.) from persistence
+    if (messageType === 'protocolMessage') {
+        return;
+    }
+
     // Ensure relations
     let contactId: string | null = null;
     let senderContactId: string | null = null;
     let groupId: string | null = null;
 
     if (isGroup) {
-        groupId = await ensureGroup(remoteJid);
+        groupId = await ensureGroup(sock, remoteJid);
         if (participantJid) {
-            senderContactId = await ensureContact(participantJid, message.pushName);
+            senderContactId = await ensureContact(sock, participantJid, message.pushName, !!message.key.fromMe);
         }
     } else {
-        contactId = await ensureContact(remoteJid, message.pushName);
+        contactId = await ensureContact(sock, remoteJid, message.pushName, !!message.key.fromMe);
     }
 
     try {
@@ -137,7 +181,7 @@ async function persistMessage(sock: WASocket, message: WAMessage) {
         });
     } catch (err: any) {
         // Ignore duplicate insert errors based on unique whatsapp_message_id
-        if (!/unique constraint/i.test(String(err?.message))) {
+        if (err?.name !== 'SequelizeUniqueConstraintError') {
             console.error('#persistMessage - error inserting message', err);
         }
     }
