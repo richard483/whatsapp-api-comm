@@ -1,24 +1,24 @@
 @Library('global-pipeline') _
 
-// KubePipeline() {
-// 	dockerImage = "karasu-bot:latest"
-// 	projectName = "karasu-bot"
-//   externalEndpointsIp = "10.10.10.22"
-//   appPort = "80"
-// }
+// example configuration for a Docker-based pipeline
 
-GlobalPipeline() {
-  dockerImage = 'karasu-bot:latest'         // required
-  projectName = 'karasu-bot'                      // required (container/service name)
+ScriptDockerPipeline() {
+  dockerImage = 'karasu-bot:latest'
+  projectName = 'karasu-bot'
   externalEndpointsIp = "10.10.10.22"
-  appPort = '80'                            // optional
-  volumeDriver = '/etc/karasu-bot/auth_info_baileys:/app/auth_info_baileys'  
+  appPort = '80'
+  volumeDriver = '<volume-driver>'
   buildArgs = [
-    DB_HOST: '222.222.1.103:5432',
-    DB_USER:'karasu',
-    DB_PASSWORD:'124rasun0_092025',
-    DB_NAME:'karasu',
-    WA_NUMBER:'6285831601962'
+    DB_HOST: '<db-host>',
+    DB_USER:'<db-user>',
+    DB_PASSWORD:'<db-password>',
+    DB_NAME:'<db-name>',
+    WA_NUMBER:'<wa-number>'
 
+  ]
+  gitConfig = [
+    repoUrl: 'https://github.com/richard483/whatsapp-bot.git',
+    branch: '<branch-name>',
+    credentialsId: '<git-credentials-id>'
   ]
 }
