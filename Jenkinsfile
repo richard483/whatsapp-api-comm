@@ -12,5 +12,13 @@ GlobalPipeline() {
   projectName = 'karasu-bot'                      // required (container/service name)
   externalEndpointsIp = "10.10.10.22"
   appPort = '80'                            // optional
-  volumeDriver = '/etc/karasu-bot/auth_info_baileys:/app/auth_info_baileys'           // optional volume driver for container (example: '/var/lib/docker/volumes:my-volume/_data' on host)
+  volumeDriver = '/etc/karasu-bot/auth_info_baileys:/app/auth_info_baileys'  
+  buildArgs = [
+    DB_HOST: '222.222.1.103:5432',
+    DB_USER:'karasu',
+    DB_PASSWORD:'124rasun0_092025',
+    DB_NAME:'karasu',
+    WA_NUMBER:'6285831601962'
+
+  ]
 }
