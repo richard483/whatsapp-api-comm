@@ -1,0 +1,157 @@
+{
+  "info": {
+    "name": "WhatsApp Bot API",
+    "description": "API endpoints for WhatsApp Bot",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Send Message",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"contact_id\": \"<contact_id>\",\n  \"message\": \"Hello from Postman!\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:3000/api/message/send",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "message",
+            "send"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Scheduled Message",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"contactId\": \"<contact_id>\",\n  \"message\": \"Scheduled message from Postman!\",\n  \"scheduledTime\": \"2025-11-17T12:00:00.000Z\",\n  \"creatorUserId\": \"testuser\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:3000/api/schedule",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "schedule"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "List Scheduled Messages",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:3000/api/schedule",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "schedule"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Scheduled Message",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:3000/api/schedule/<id>",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "schedule",
+            "<id>"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Update Scheduled Message",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"Updated scheduled message!\",\n  \"scheduledTime\": \"2025-11-17T13:00:00.000Z\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:3000/api/schedule/<id>",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "schedule",
+            "<id>"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Delete Scheduled Message",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "http://localhost:3000/api/schedule/<id>",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "schedule",
+            "<id>"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}

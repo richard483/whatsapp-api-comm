@@ -1,5 +1,6 @@
 import { connectToWhatsApp } from "./config/baileys-config";
 import { sequelize } from "./config/sequelize-config";
+import "./scheduler/schedulerService";
 
 (async () => {
   try {
