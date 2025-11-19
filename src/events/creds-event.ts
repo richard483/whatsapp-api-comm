@@ -1,14 +1,16 @@
-import { WASocket } from "baileys";
+import { WASocket } from "@whiskeysockets/baileys";
 import QRCode from "qrcode-terminal";
+import logger from '../logger';
 
 function handleCredsEvent(sock: WASocket, saveCreds: () => Promise<void>) {
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update
-        console.log('#handleCredsEvent - connection update', connection, lastDisconnect);
+        logger.info('#handleCredsEvent - Connection update', { connection, lastDisconnect });
         if (qr) {
             console.log(QRCode.generate(qr, { small: true }));
+            logger.info('#handleCredsEvent - QR code generated for scanning');
         }
     });
 }

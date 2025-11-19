@@ -1,5 +1,5 @@
-import { ConnectionState, DisconnectReason, WASocket } from "baileys";
-
+import { ConnectionState, DisconnectReason, WASocket } from "@whiskeysockets/baileys";
+import logger from '../logger';
 
 function handleConnectionUpdate(sock: WASocket, update: Partial<ConnectionState>, connectToWhatsApp: () => Promise<void>) {
     const { connection, lastDisconnect } = update;
@@ -9,12 +9,12 @@ function handleConnectionUpdate(sock: WASocket, update: Partial<ConnectionState>
         if (error && error.output && typeof error.output.statusCode !== 'undefined') {
             shouldReconnect = error.output.statusCode !== DisconnectReason.loggedOut;
         }
-        console.log('#handleConnectionUpdate - connection closed due to ', lastDisconnect?.error, ', reconnecting ', shouldReconnect);
+        logger.warn('#handleConnectionUpdate - Connection closed', { error: lastDisconnect?.error, shouldReconnect });
         if (shouldReconnect) {
             connectToWhatsApp();
         }
     } else if (connection === 'open') {
-        console.log('#handleConnectionUpdate - opened connection');
+        logger.info('#handleConnectionUpdate - Connection opened successfully');
     }
 }
 

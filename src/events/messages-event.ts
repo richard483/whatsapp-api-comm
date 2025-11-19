@@ -1,5 +1,13 @@
-import { MessageUpsertType, WAMessage, WASocket } from "baileys";
+import { WAMessage, WAMessageUpdate, WASocket, getContentType } from "@whiskeysockets/baileys";
 import { Messages } from "../model/message";
+import { Contacts } from "../model/contact";
+import { Groups } from "../model/group";
+import { proto } from "@whiskeysockets/baileys";
+import logger from "../logger";
+
+// Simple in-memory cache to reduce repetitive DB lookups
+const contactCache = new Set<string>();
+const groupCache = new Set<string>();
 
 
 async function textHandler(text: string, whatsAppId: string, messageTimestamp: Long | number): Promise<{ reply: string, mentions?: string[] }> {
@@ -12,57 +20,306 @@ async function textHandler(text: string, whatsAppId: string, messageTimestamp: L
     return { reply: '' };
 }
 
-function normalizedMessage(message: WAMessage) {
-    const convMsg = message.message?.conversation ?? '';
-    const extendedTextMsg = message.message?.extendedTextMessage?.text ?? '';
-    const captionMsg = message.message?.imageMessage?.caption ?? '';
-    const docMsg = message.message?.documentMessage?.caption ?? '';
-    const docWithCaptionMsg = message.message?.documentWithCaptionMessage?.message?.documentMessage?.caption ?? '';
+function normalizedMessage(message: proto.IMessage | undefined): string {
+    const convMsg = message?.conversation ?? '';
+    const extendedTextMsg = message?.extendedTextMessage?.text ?? '';
+    const captionMsg = message?.imageMessage?.caption ?? '';
+    const docMsg = message?.documentMessage?.caption ?? '';
+    const docWithCaptionMsg = message?.documentWithCaptionMessage?.message?.documentMessage?.caption ?? '';
     return convMsg + extendedTextMsg + captionMsg + docMsg + docWithCaptionMsg;
 }
 
-async function handleMessagesUpsert(sock: WASocket, message: WAMessage) {
+// TODO: the currnet phone number are mostlikely extracted from JID only, need to improve extraction logic
+async function ensureContact(sock: WASocket, jid: string, displayName?: string | null, fromMe?: boolean, phoneNumber?: string | null): Promise<string | null> {
+    // Accept both classic & LID JIDs
+    if (!jid || !(jid.endsWith('@s.whatsapp.net') || jid.endsWith('@lid'))) return null;
 
-    const normalizedMsg = normalizedMessage(message)
+    const existing = await Contacts.findOne({ where: { whatsapp_jid: jid } });
+    if (existing) {
+        // If we previously stored without a display name & now have one (and it's not from our own message), update it once
+        const updates: Record<string, any> = {};
+        if (!fromMe && displayName && !existing.display_name) {
+            updates.display_name = displayName;
+        }
+        // If phone number is available and not set, update it
+        if (phoneNumber && !existing.phone_number) {
+            updates.phone_number = phoneNumber;
+        }
+        if (Object.keys(updates).length > 0) {
+            await existing.update(updates);
+        }
+        contactCache.add(jid);
+        return existing.id;
+    }
 
-    if (normalizedMsg === '') {
+    // Prefer explicit phoneNumber, fallback to extracting from JID
+    const phone = phoneNumber || (jid.split('@')[0] || null);
+    // Don't trust pushName on outbound messages (it will be our bot's own name). Use null in that case.
+    const resolvedName = fromMe ? null : (displayName ?? null);
+
+    try {
+        // Optionally verify existence (not strictly needed; ignore result)
+        await sock.onWhatsApp(jid).catch(() => undefined);
+    } catch {
+        // ignore
+    }
+
+    const contact = await Contacts.create({
+        whatsapp_jid: jid,
+        phone_number: phone,
+        display_name: resolvedName,
+        is_business: false,
+        additional_data: null,
+    });
+    contactCache.add(jid);
+    return contact.id;
+}
+
+async function ensureGroup(sock: WASocket, jid: string): Promise<string | null> {
+    if (!jid || !jid.endsWith('@g.us')) return null;
+    let group = await Groups.findOne({ where: { whatsapp_jid: jid } });
+    if (!group) {
+        group = await Groups.create({
+            whatsapp_jid: jid,
+            subject: null,
+            description: null,
+            owner_jid: null,
+            participant_count: null,
+            additional_data: null,
+        });
+    }
+    // Enrichment: fetch metadata if missing critical fields
+    if (!group.subject || !group.participant_count || !group.owner_jid) {
+        try {
+            const meta: any = await sock.groupMetadata(jid);
+            await group.update({
+                subject: meta.subject || group.subject,
+                description: meta.desc || group.description,
+                owner_jid: meta.owner || group.owner_jid,
+                participant_count: (meta.size ?? (Array.isArray(meta.participants) ? meta.participants.length : null)) || group.participant_count,
+                additional_data: {
+                    ...(group.additional_data || {}),
+                    restrict: meta.restrict ?? null,
+                    announce: meta.announce ?? null,
+                    joinApprovalMode: meta.joinApprovalMode ?? null,
+                    isCommunity: meta.isCommunity ?? null,
+                    isCommunityAnnounce: meta.isCommunityAnnounce ?? null,
+                    fetched_at: new Date().toISOString(),
+                },
+            });
+        } catch {
+            // ignore metadata fetch failures
+        }
+    }
+    groupCache.add(jid);
+    return group.id;
+}
+
+function buildAdditionalData(message: WAMessage) {
+    const type = getContentType((message.message || undefined) as any) || null;
+    const mentions: string[] = (message.message?.extendedTextMessage?.contextInfo?.mentionedJid || []).map(j => j);
+    const quotedKey = message.message?.extendedTextMessage?.contextInfo?.stanzaId || null;
+    const quotedRemote = message.message?.extendedTextMessage?.contextInfo?.participant || null;
+    const media = message.message?.imageMessage || message.message?.videoMessage || message.message?.audioMessage || message.message?.documentMessage || null;
+    return {
+        content_type: type,
+        context: {
+            quoted_message_id: quotedKey,
+            quoted_remote_jid: quotedRemote,
+            mentions,
+        },
+        media: media ? {
+            mimetype: (media as any).mimetype || null,
+            file_name: (media as any).fileName || null,
+            file_length: (media as any).fileLength || null,
+            width: (media as any).width || null,
+            height: (media as any).height || null,
+            media_key_timestamp: (media as any).mediaKeyTimestamp || null,
+            sha256: (media as any).fileSha256 || null,
+        } : null,
+        flags: {
+            is_view_once: !!(message.message?.viewOnceMessage || message.message?.imageMessage?.viewOnce || message.message?.videoMessage?.viewOnce),
+            is_ephemeral: !!(message.message?.ephemeralMessage),
+        },
+    };
+}
+
+async function persistMessage(sock: WASocket, waMessage: WAMessage) {
+    const remoteJid = waMessage.key.remoteJid || '';
+    const isGroup = remoteJid.endsWith('@g.us');
+    const participantJid = waMessage.key.participant || waMessage.key.participantAlt || null;
+    const normalizedMsg = normalizedMessage(waMessage.message || undefined);
+    const messageType = getContentType((waMessage.message || undefined) as any) || null;
+    const whatsappMessageId = waMessage.key.id || `${Date.now()}-${Math.random()}`; // fallback safety
+
+    // Ignore events where both message_type and message_text are effectively null/empty
+    if (!messageType && (!normalizedMsg || normalizedMsg.trim().length === 0)) {
         return;
     }
 
-    const isGroup = message.key.remoteJid?.endsWith('@g.us') ?? false;
+    // Drop protocolMessage events (edits/deletes/ephemeral toggles, etc.) from persistence
+    if (messageType === 'protocolMessage') {
+        return;
+    }
 
-    await Messages.create({
-        timestamp: message.messageTimestamp,
-        message: normalizedMsg,
-        pushName: message.pushName,
-        senderPn: (message.key.fromMe ? 'SELF => ' : '') + (message.key.participantPn?.split('@')[0] ?? message.key.remoteJid?.split('@')[0] ?? ''),
-        groupId: isGroup ? message.key.remoteJid?.split('@')[0] : null,
-        isGroup,
-    });
+    // Ensure relations
+    let contactId: string | null = null;
+    let senderContactId: string | null = null;
+    let groupId: string | null = null;
 
-    if (!message.key.fromMe && !isGroup) {
-        const normalized = normalizedMsg;
-        const whatsAppId: string = message.key.remoteJid ?? '';
-
-        // await sock.readMessages([messages[0].key]);
-
-        let replyMessage = await textHandler(normalized ?? '', whatsAppId, message.messageTimestamp ?? 0);
-
-        if (replyMessage.reply === '' || replyMessage.reply === null || replyMessage.reply === undefined) {
-            return;
+    if (isGroup) {
+        groupId = await ensureGroup(sock, remoteJid);
+        if (participantJid) {
+            // Use participantPn if available for phone number
+            senderContactId = await ensureContact(sock, participantJid, waMessage.pushName, !!waMessage.key.fromMe, waMessage.key.participant || null);
         }
+    } else {
+        contactId = await ensureContact(sock, remoteJid, waMessage.pushName, !!waMessage.key.fromMe, waMessage.key.participant || null);
+    }
 
-        await sock.sendMessage(whatsAppId, { text: replyMessage.reply, mentions: replyMessage.mentions });
+    try {
+        await Messages.create({
+            whatsapp_message_id: whatsappMessageId,
+            remote_jid: remoteJid,
+            participant_jid: participantJid || null,
+            contact_id: contactId,
+            sender_contact_id: senderContactId,
+            group_id: groupId,
+            timestamp: Number(waMessage.messageTimestamp) || Math.floor(Date.now() / 1000),
+            message_type: messageType,
+            message_text: normalizedMsg || null,
+            push_name_snapshot: waMessage.pushName || null,
+            is_group: isGroup,
+            additional_data: buildAdditionalData(waMessage),
+        });
+    } catch (err: any) {
+        // Ignore duplicate insert errors based on unique whatsapp_message_id
+        if (err?.name !== 'SequelizeUniqueConstraintError') {
+            logger.error('#persistMessage - error inserting message', { error: err.message, stack: err.stack, messageId: waMessage.key.id });
+        }
+    }
+
+    // Simple auto-reply logic for direct chats only (keep original behavior)
+    if (!isGroup && !waMessage.key.fromMe && normalizedMsg) {
+        const replyMessage = await textHandler(normalizedMsg, remoteJid, waMessage.messageTimestamp ?? 0);
+        if (replyMessage.reply) {
+            await sock.sendMessage(remoteJid, { text: replyMessage.reply, mentions: replyMessage.mentions });
+        }
     }
 }
 
+async function storeUpdatedMessage(waMessageUpdate: WAMessageUpdate) {
+    const whatsappMessageId = waMessageUpdate.key.id;
+    if (!whatsappMessageId) {
+        return;
+    }
+
+    try {
+        // Fetch the existing message to copy its metadata
+        const existingMessage = await Messages.findOne({ where: { whatsapp_message_id: whatsappMessageId } });
+        if (!existingMessage) {
+            return;
+        }
+
+        // Extract updated message content if available
+        const updatedMessage = waMessageUpdate.update.message;
+        if (!updatedMessage) {
+            return;
+        }
+
+        // Check if this is an edit (editedMessage wrapper) or a regular update
+        const actualMessage = updatedMessage.editedMessage?.message || updatedMessage;
+        const normalizedMsg = normalizedMessage(actualMessage);
+        const messageType = getContentType(actualMessage as any) || null;
+
+        // Ignore events where both message_type and message_text are effectively null/empty
+        if (!messageType && (!normalizedMsg || normalizedMsg.trim().length === 0)) {
+            return;
+        }
+
+        // Drop protocolMessage events (deletes/ephemeral toggles, etc.)
+        if (messageType === 'protocolMessage') {
+            return;
+        }
+
+        // Build additional_data for the updated message
+        const fakeWAMessage: WAMessage = {
+            key: waMessageUpdate.key,
+            message: actualMessage,
+            messageTimestamp: waMessageUpdate.update.messageTimestamp,
+        };
+
+        // Create a new record with the updated content (stores duplicate for history)
+        await Messages.create({
+            whatsapp_message_id: whatsappMessageId,
+            remote_jid: existingMessage.remote_jid,
+            participant_jid: existingMessage.participant_jid,
+            contact_id: existingMessage.contact_id,
+            sender_contact_id: existingMessage.sender_contact_id,
+            group_id: existingMessage.group_id,
+            timestamp: Number(waMessageUpdate.update.messageTimestamp) || existingMessage.timestamp,
+            message_type: messageType || existingMessage.message_type,
+            message_text: normalizedMsg || existingMessage.message_text,
+            push_name_snapshot: existingMessage.push_name_snapshot,
+            is_group: existingMessage.is_group,
+            additional_data: buildAdditionalData(fakeWAMessage),
+        });
+    } catch (err: any) {
+        // Ignore duplicate insert errors based on unique constraints if any
+        if (err?.name === 'SequelizeUniqueConstraintError') {
+            logger.info(`#storeUpdatedMessage - duplicate message insert ignored ${whatsappMessageId}`);
+        } else {
+            logger.error('#storeUpdatedMessage - error storing updated message', {
+                messageId: whatsappMessageId,
+                error: err.message,
+                stack: err.stack,
+                name: err.name,
+                details: err
+            });
+        }
+    }
+}
+
+async function handleMessagesUpsert(sock: WASocket, messages: WAMessage[]) {
+    for (const m of messages) {
+        await persistMessage(sock, m);
+    }
+}
+
+async function handleMessagesUpdate(updates: WAMessageUpdate[]) {
+    for (const m of updates) {
+        await storeUpdatedMessage(m);
+    }
+}
+
+
 function handleMessagesEvent(sock: WASocket) {
     sock.ev.on('messages.upsert', async (event) => {
-        // event.messages.forEach(async message => {
-        //     await handleMessagesUpsert(sock, message);
-        // });
-        await handleMessagesUpsert(sock, event.messages[0]);
+        try {
+            await handleMessagesUpsert(sock, event.messages);
+        } catch (e: any) {
+            logger.error('#handleMessagesEvent - error processing upsert batch', { error: e.message, stack: e.stack });
+        }
+    });
 
+    sock.ev.on('messages.update', async (event) => {
+        try {
+            await handleMessagesUpdate(event);
+        } catch (e: any) {
+            logger.error('#handleMessagesEvent - error processing update batch', { error: e.message, stack: e.stack });
+        }
+    });
+    // History sync event (Baileys emits history batches)
+    (sock.ev as any).on('messaging.history-set', async (event: any) => {
+        const historyMessages: WAMessage[] = event.messages || [];
+        if (historyMessages.length === 0) return;
+        for (const hm of historyMessages) {
+            try {
+                await persistMessage(sock, hm);
+            } catch (e: any) {
+                logger.error('#history-set - error persisting history message', { error: e.message, stack: e.stack });
+            }
+        }
     });
 }
 
