@@ -51,7 +51,6 @@ Messages.init(
     whatsapp_message_id: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
     },
     remote_jid: {
       type: DataTypes.STRING,
@@ -111,7 +110,7 @@ Messages.init(
     timestamps: true,
     underscored: true,
     indexes: [
-      { unique: true, fields: ["whatsapp_message_id"] },
+      { fields: ["whatsapp_message_id"] },
       { fields: ["remote_jid"] },
       { fields: ["timestamp"] },
       { fields: ["contact_id"] },
