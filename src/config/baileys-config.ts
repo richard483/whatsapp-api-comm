@@ -1,9 +1,11 @@
 import { useMultiFileAuthState, makeWASocket, WASocket, Browsers } from "@whiskeysockets/baileys";
 import { handleEvent } from "../events";
 
+let sock: WASocket | null = null;
+
 async function connectToWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
-  const sock: WASocket = makeWASocket({
+  sock = makeWASocket({
     auth: state,
     // enable full history sync automatically on first connect
     syncFullHistory: true,
@@ -17,6 +19,11 @@ async function connectToWhatsApp() {
   handleEvent(sock, connectToWhatsApp, saveCreds);
 }
 
+function getWaSocket(): WASocket {
+  return sock!;
+}
+
 export {
-  connectToWhatsApp
+  connectToWhatsApp,
+  getWaSocket,
 };

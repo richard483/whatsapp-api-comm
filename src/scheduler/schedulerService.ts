@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import ScheduledMessage from '../model/scheduledMessage';
 import { sendMessageToContact } from '../messageService';
 import logger from '../logger';
+import { Op } from 'sequelize';
 
 // Runs every minute
 cron.schedule('* * * * *', async () => {
@@ -11,7 +12,9 @@ cron.schedule('* * * * *', async () => {
     const messages = await ScheduledMessage.findAll({
       where: {
         status: ['pending', 'queued'],
-        scheduledTime: { lte: now },
+        scheduledTime: {
+          [Op.lte]: now
+        },
       },
     });
     for (const msg of messages) {
