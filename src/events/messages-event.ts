@@ -177,6 +177,11 @@ async function persistMessage(sock: WASocket, waMessage: WAMessage) {
         contactId = await ensureContact(sock, remoteJid, waMessage.pushName, !!waMessage.key.fromMe, waMessage.key.participant || null);
     }
 
+    if (!contactId && !senderContactId && !participantJid) {
+        logger.warn('#persistMessage - unable to resolve contact for message', { messageId: whatsappMessageId, remoteJid, participantJid });
+        return;
+    }
+
     try {
         await Messages.create({
             whatsapp_message_id: whatsappMessageId,
