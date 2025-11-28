@@ -2,17 +2,45 @@ import express from 'express';
 import ScheduledMessage from '../model/scheduledMessage';
 const router = express.Router();
 
-// Create a scheduled message
+function parseTimezoneOffset(timeZone: string): number {
+  const match = timeZone.match(/^GMT([+-])(\d{2})(?::?(\d{2}))?$/i);
+  if (!match) {
+    throw new Error(`Invalid timezone format: ${timeZone}. Expected format like "GMT+07" or "GMT-05:30"`);
+  }
+  const sign = match[1] === '+' ? 1 : -1;
+  const hours = parseInt(match[2], 10);
+  const minutes = match[3] ? parseInt(match[3], 10) : 0;
+  return sign * (hours * 60 + minutes);
+}
+
+function parseScheduledDateTime(scheduledDate: string, scheduledTime: string, timeZone: string): Date {
+  const offsetMinutes = parseTimezoneOffset(timeZone);
+
+  const localDateTimeStr = `${scheduledDate}T${scheduledTime}:00`;
+
+  const localDate = new Date(localDateTimeStr + 'Z');
+
+  localDate.setMinutes(localDate.getMinutes() - offsetMinutes);
+
+  return localDate;
+}
+
 router.post('/', async (req, res) => {
-  const { contactId, message, scheduledTime, creatorUserId } = req.body;
-  if (!contactId || !message || !scheduledTime || !creatorUserId) {
-    return res.status(400).json({ error: 'Missing required fields' });
+  const { contactId, message, scheduledDate, scheduledTime, timeZone, creatorUserId } = req.body;
+  if (!contactId || !message || !scheduledDate || !scheduledTime || !timeZone || !creatorUserId) {
+    return res.status(400).json({ error: 'Missing required fields: contactId, message, scheduledDate, scheduledTime, timeZone, creatorUserId' });
   }
   try {
+    const scheduledDateTime = parseScheduledDateTime(scheduledDate, scheduledTime, timeZone);
+
+    if (isNaN(scheduledDateTime.getTime())) {
+      return res.status(400).json({ error: 'Invalid date/time format' });
+    }
+
     const scheduledMsg = await ScheduledMessage.create({
       contactId,
       message,
-      scheduledTime,
+      scheduledTime: scheduledDateTime,
       status: 'pending',
       creatorUserId,
     });
