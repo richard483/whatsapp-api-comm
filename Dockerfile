@@ -25,6 +25,7 @@ ENV DB_USER=${DB_USER}
 ENV DB_PASSWORD=${DB_PASSWORD}
 ENV DB_NAME=${DB_NAME}
 ENV WA_NUMBER=${WA_NUMBER}
+ENV PORT=18080
 
 WORKDIR /app
 
@@ -34,6 +35,6 @@ COPY --from=builder /app/dist ./dist
 
 VOLUME ["/app/auth_info_baileys"]
 
-EXPOSE 80
+EXPOSE 18080
 
 CMD [ "node", "dist/index.js" ]
