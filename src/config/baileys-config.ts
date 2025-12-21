@@ -9,8 +9,6 @@ async function connectToWhatsApp() {
     auth: state,
     // enable full history sync automatically on first connect
     syncFullHistory: true,
-    // @ts-ignore
-    cachedGroupMetadata: true,
     // emulate desktop for larger history chunks
     browser: Browsers.macOS('Desktop'),
     // version: [2, 3000, 1025190524],

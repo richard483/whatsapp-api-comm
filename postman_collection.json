@@ -36,6 +36,36 @@
       "response": []
     },
     {
+      "name": "Send Message to Group",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"group_id\": \"<group_id>\",\n  \"message\": \"Hello group from Postman!\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:3000/api/message/send-group",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "message",
+            "send-group"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
       "name": "Create Scheduled Message",
       "request": {
         "method": "POST",
