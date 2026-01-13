@@ -12,6 +12,7 @@ async function connectToWhatsApp() {
     // emulate desktop for larger history chunks
     browser: Browsers.macOS('Desktop'),
     // version: [2, 3000, 1025190524],
+    markOnlineOnConnect: false,
   });
 
   handleEvent(sock, connectToWhatsApp, saveCreds);
