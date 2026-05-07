@@ -8,9 +8,11 @@ import logger from './logger';
   try {
     await sequelize.authenticate();
     logger.info('#main-process - DB connection established');
-    // Ensure DB schema is created
+    // Ensure DB schema is created. DB_AUTO_ALTER=true asks Sequelize to ALTER
+    // existing tables to match the models (use only in dev / on first deploy
+    // after a schema change; never leave on in steady-state production).
     await sequelize.sync({
-      alter: false,
+      alter: process.env.DB_AUTO_ALTER === 'true',
       force: false,
     });
     logger.info('#main-process - DB synced');
