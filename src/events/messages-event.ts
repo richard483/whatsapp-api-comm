@@ -203,7 +203,8 @@ async function persistMessage(sock: WASocket, waMessage: WAMessage) {
 
     // Built-in ping reply for direct chats
     if (!isGroup && !waMessage.key.fromMe && normalizedMsg.trim() === 'ping') {
-        const latency = Date.now() - Number(waMessage.messageTimestamp ?? 0);
+        // messageTimestamp is in epoch seconds; Date.now() is in ms.
+        const latency = Date.now() - Number(waMessage.messageTimestamp ?? 0) * 1000;
         await sock.sendMessage(remoteJid, { text: `pong, your latency is ${latency}ms` }).catch((e: any) => {
             logger.warn('#persistMessage - failed to send ping reply', { error: e?.message });
         });
