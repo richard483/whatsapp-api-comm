@@ -1,187 +1,441 @@
 {
   "info": {
-    "name": "WhatsApp Bot API",
-    "description": "API endpoints for WhatsApp Bot",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    "name": "WhatsApp API Comm",
+    "description": "HTTP API for the logged-in WhatsApp account: profile, contacts, groups, messages, and scheduling. No auth (trusted network).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "wa-api-comm-collection"
   },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "contact_id", "value": "" },
+    { "key": "group_id", "value": "" },
+    { "key": "message_id", "value": "" },
+    { "key": "schedule_id", "value": "" }
+  ],
   "item": [
     {
-      "name": "Send Message",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
+      "name": "Profile & Status",
+      "item": [
+        {
+          "name": "GET /api/profile",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/profile", "host": ["{{baseUrl}}"], "path": ["api", "profile"] },
+            "description": "Returns own jid, lid, pushName, platform, pictureUrl, status."
           }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"contact_id\": \"<contact_id>\",\n  \"message\": \"Hello from Postman!\"\n}"
         },
-        "url": {
-          "raw": "http://localhost:3000/api/message/send",
-          "protocol": "http",
-          "host": [
-            "localhost"
-          ],
-          "port": "3000",
-          "path": [
-            "api",
-            "message",
-            "send"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Send Message to Group",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
+        {
+          "name": "PATCH /api/profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"My New Name\",\n  \"status\": \"Hey there! I am using WhatsApp.\",\n  \"pictureUrl\": \"https://example.com/avatar.jpg\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/profile", "host": ["{{baseUrl}}"], "path": ["api", "profile"] },
+            "description": "Update own profile. Any field is optional. Pass pictureUrl: null to remove the picture."
           }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"group_id\": \"<group_id>\",\n  \"message\": \"Hello group from Postman!\"\n}"
         },
-        "url": {
-          "raw": "http://localhost:3000/api/message/send-group",
-          "protocol": "http",
-          "host": [
-            "localhost"
-          ],
-          "port": "3000",
-          "path": [
-            "api",
-            "message",
-            "send-group"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Create Scheduled Message",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
+        {
+          "name": "GET /api/status",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/status", "host": ["{{baseUrl}}"], "path": ["api", "status"] },
+            "description": "Connection state: { state, lastQr, lastDisconnectReason, me }."
           }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"contactId\": \"<contact_id>\",\n  \"message\": \"Scheduled message from Postman!\",\n  \"scheduledTime\": \"2025-11-17T12:00:00.000Z\",\n  \"creatorUserId\": \"testuser\"\n}"
-        },
-        "url": {
-          "raw": "http://localhost:3000/api/schedule",
-          "protocol": "http",
-          "host": [
-            "localhost"
-          ],
-          "port": "3000",
-          "path": [
-            "api",
-            "schedule"
-          ]
         }
-      },
-      "response": []
+      ]
     },
     {
-      "name": "List Scheduled Messages",
-      "request": {
-        "method": "GET",
-        "url": {
-          "raw": "http://localhost:3000/api/schedule",
-          "protocol": "http",
-          "host": [
-            "localhost"
-          ],
-          "port": "3000",
-          "path": [
-            "api",
-            "schedule"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Get Scheduled Message",
-      "request": {
-        "method": "GET",
-        "url": {
-          "raw": "http://localhost:3000/api/schedule/<id>",
-          "protocol": "http",
-          "host": [
-            "localhost"
-          ],
-          "port": "3000",
-          "path": [
-            "api",
-            "schedule",
-            "<id>"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Update Scheduled Message",
-      "request": {
-        "method": "PUT",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
+      "name": "Contacts",
+      "item": [
+        {
+          "name": "GET /api/contacts",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/contacts?limit=50&offset=0&q=",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contacts"],
+              "query": [
+                { "key": "limit", "value": "50" },
+                { "key": "offset", "value": "0" },
+                { "key": "q", "value": "", "description": "Optional substring (display_name or phone_number)" }
+              ]
+            }
           }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"message\": \"Updated scheduled message!\",\n  \"scheduledTime\": \"2025-11-17T13:00:00.000Z\"\n}"
         },
-        "url": {
-          "raw": "http://localhost:3000/api/schedule/<id>",
-          "protocol": "http",
-          "host": [
-            "localhost"
-          ],
-          "port": "3000",
-          "path": [
-            "api",
-            "schedule",
-            "<id>"
-          ]
+        {
+          "name": "GET /api/contacts/check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/contacts/check?phone_number=6285831601962",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contacts", "check"],
+              "query": [{ "key": "phone_number", "value": "6285831601962" }]
+            },
+            "description": "Verify a number is on WhatsApp without persisting."
+          }
+        },
+        {
+          "name": "POST /api/contacts",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_number\": \"6285831601962\",\n  \"display_name\": \"Karasu\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/contacts", "host": ["{{baseUrl}}"], "path": ["api", "contacts"] },
+            "description": "Verifies via onWhatsApp, then creates/updates a local contact row."
+          }
+        },
+        {
+          "name": "GET /api/contacts/:id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/contacts/{{contact_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contacts", "{{contact_id}}"]
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/contacts/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"New Name\",\n  \"description\": \"Friend from work\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/contacts/{{contact_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contacts", "{{contact_id}}"]
+            },
+            "description": "Updates local-only fields (WhatsApp has no server-side contact list)."
+          }
+        },
+        {
+          "name": "DELETE /api/contacts/:id",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/contacts/{{contact_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contacts", "{{contact_id}}"]
+            },
+            "description": "Removes from local DB only."
+          }
         }
-      },
-      "response": []
+      ]
     },
     {
-      "name": "Delete Scheduled Message",
-      "request": {
-        "method": "DELETE",
-        "url": {
-          "raw": "http://localhost:3000/api/schedule/<id>",
-          "protocol": "http",
-          "host": [
-            "localhost"
-          ],
-          "port": "3000",
-          "path": [
-            "api",
-            "schedule",
-            "<id>"
-          ]
+      "name": "Groups",
+      "item": [
+        {
+          "name": "GET /api/groups",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/groups?limit=50&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups"],
+              "query": [
+                { "key": "limit", "value": "50" },
+                { "key": "offset", "value": "0" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /api/groups (create)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"My New Group\",\n  \"participants\": [\"6285831601962\", \"6281234567890\"]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/groups", "host": ["{{baseUrl}}"], "path": ["api", "groups"] },
+            "description": "Create a new group. Participants accept either phone numbers or full JIDs."
+          }
+        },
+        {
+          "name": "POST /api/groups/join",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://chat.whatsapp.com/INVITECODE123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/groups/join",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups", "join"]
+            },
+            "description": "Join via invite link or { code }."
+          }
+        },
+        {
+          "name": "GET /api/groups/:id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/groups/{{group_id}}?refresh=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups", "{{group_id}}"],
+              "query": [{ "key": "refresh", "value": "true", "description": "Re-fetch metadata from WhatsApp and persist." }]
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/groups/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Updated Subject\",\n  \"description\": \"New description\",\n  \"announce\": false,\n  \"locked\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/groups/{{group_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups", "{{group_id}}"]
+            },
+            "description": "announce=true means only admins can send messages. locked=true means only admins can edit group info."
+          }
+        },
+        {
+          "name": "POST /api/groups/:id/leave",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/groups/{{group_id}}/leave",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups", "{{group_id}}", "leave"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/groups/:id/participants",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"add\",\n  \"participants\": [\"6281234567890\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/groups/{{group_id}}/participants",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups", "{{group_id}}", "participants"]
+            },
+            "description": "action: add | remove | promote | demote."
+          }
+        },
+        {
+          "name": "GET /api/groups/:id/invite-code",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/groups/{{group_id}}/invite-code",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups", "{{group_id}}", "invite-code"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/groups/:id/invite-code/revoke",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/groups/{{group_id}}/invite-code/revoke",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups", "{{group_id}}", "invite-code", "revoke"]
+            },
+            "description": "Revokes the current invite code and returns a new one."
+          }
         }
-      },
-      "response": []
+      ]
+    },
+    {
+      "name": "Messages",
+      "item": [
+        {
+          "name": "GET /api/message (history)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/message?contact_id=&group_id=&since=&until=&limit=50&before_id=",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "message"],
+              "query": [
+                { "key": "contact_id", "value": "", "description": "Optional UUID filter" },
+                { "key": "group_id", "value": "", "description": "Optional UUID filter" },
+                { "key": "since", "value": "", "description": "Optional epoch seconds (>=)" },
+                { "key": "until", "value": "", "description": "Optional epoch seconds (<=)" },
+                { "key": "limit", "value": "50", "description": "Max 200" },
+                { "key": "before_id", "value": "", "description": "Cursor: UUID of a message; returns ones older than it" }
+              ]
+            },
+            "description": "Keyset pagination: response includes next_before_id for fetching the next page."
+          }
+        },
+        {
+          "name": "GET /api/message/:id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/message/{{message_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "message", "{{message_id}}"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/message/send",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contact_id\": \"{{contact_id}}\",\n  \"message\": \"Hello from the API!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/message/send",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "message", "send"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/message/send-group",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"group_id\": \"{{group_id}}\",\n  \"message\": \"Hello group!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/message/send-group",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "message", "send-group"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/message/:id/edit",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Edited message body\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/message/{{message_id}}/edit",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "message", "{{message_id}}", "edit"]
+            },
+            "description": "Edits one of our own messages. 403 if from_me=false."
+          }
+        },
+        {
+          "name": "DELETE /api/message/:id (revoke)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/message/{{message_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "message", "{{message_id}}"]
+            },
+            "description": "Revoke (delete-for-everyone). 403 if from_me=false."
+          }
+        },
+        {
+          "name": "POST /api/message/:id/read",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/message/{{message_id}}/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "message", "{{message_id}}", "read"]
+            },
+            "description": "Marks an inbound message as read. 400 if from_me=true."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Schedule",
+      "item": [
+        {
+          "name": "POST /api/schedule",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactId\": \"{{contact_id}}\",\n  \"message\": \"Scheduled hello\",\n  \"scheduledDate\": \"2026-05-08\",\n  \"scheduledTime\": \"09:30\",\n  \"timeZone\": \"GMT+07\",\n  \"creatorUserId\": \"user-123\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/schedule", "host": ["{{baseUrl}}"], "path": ["api", "schedule"] },
+            "description": "timeZone format: GMT+07 or GMT-05:30. Status starts at 'pending'; cron picks it up every minute."
+          }
+        },
+        {
+          "name": "GET /api/schedule",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/schedule", "host": ["{{baseUrl}}"], "path": ["api", "schedule"] }
+          }
+        },
+        {
+          "name": "GET /api/schedule/:id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/schedule/{{schedule_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "schedule", "{{schedule_id}}"]
+            }
+          }
+        },
+        {
+          "name": "PUT /api/schedule/:id",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Updated text\",\n  \"status\": \"cancelled\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/schedule/{{schedule_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "schedule", "{{schedule_id}}"]
+            },
+            "description": "Body is passed through to model.update — any model field is updatable."
+          }
+        },
+        {
+          "name": "DELETE /api/schedule/:id",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/schedule/{{schedule_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "schedule", "{{schedule_id}}"]
+            }
+          }
+        }
+      ]
     }
   ]
 }
