@@ -10,16 +10,6 @@ const contactCache = new Set<string>();
 const groupCache = new Set<string>();
 
 
-async function textHandler(text: string, whatsAppId: string, messageTimestamp: Long | number): Promise<{ reply: string, mentions?: string[] }> {
-    if (text === 'ping') {
-        const latency = Date.now() - Number(messageTimestamp);
-        return { reply: `pong, your latency is ${latency}ms` };
-    } else if (text === 'hi' || text === 'hello') {
-        return { reply: `Hello, how can I help you?`, mentions: [whatsAppId] };
-    }
-    return { reply: '' };
-}
-
 function normalizedMessage(message: proto.IMessage | undefined): string {
     const convMsg = message?.conversation ?? '';
     const extendedTextMsg = message?.extendedTextMessage?.text ?? '';
@@ -157,8 +147,12 @@ async function persistMessage(sock: WASocket, waMessage: WAMessage) {
         return;
     }
 
-    // Drop protocolMessage events (edits/deletes/ephemeral toggles, etc.) from persistence
+    // Handle protocolMessage: capture REVOKE (deletion); drop other subtypes (ephemeral toggles, etc.)
     if (messageType === 'protocolMessage') {
+        const protocolMsg = waMessage.message?.protocolMessage;
+        if (protocolMsg?.type === proto.Message.ProtocolMessage.Type.REVOKE) {
+            await applyRevoke(protocolMsg, remoteJid);
+        }
         return;
     }
 
@@ -195,93 +189,121 @@ async function persistMessage(sock: WASocket, waMessage: WAMessage) {
             message_text: normalizedMsg || null,
             push_name_snapshot: waMessage.pushName || null,
             is_group: isGroup,
+            from_me: !!waMessage.key.fromMe,
+            status: typeof waMessage.status === 'number' ? proto.WebMessageInfo.Status[waMessage.status] || null : null,
             additional_data: buildAdditionalData(waMessage),
         });
     } catch (err: any) {
-        // Ignore duplicate insert errors based on unique whatsapp_message_id
+        // Duplicate (unique whatsapp_message_id): expected when our own send echoes back
+        // after we already inserted via the API path, or when a revoke stub already exists.
         if (err?.name !== 'SequelizeUniqueConstraintError') {
             logger.error('#persistMessage - error inserting message', { error: err.message, stack: err.stack, messageId: waMessage.key.id });
         }
     }
 
-    // Simple auto-reply logic for direct chats only (keep original behavior)
-    if (!isGroup && !waMessage.key.fromMe && normalizedMsg) {
-        const replyMessage = await textHandler(normalizedMsg, remoteJid, waMessage.messageTimestamp ?? 0);
-        if (replyMessage.reply) {
-            await sock.sendMessage(remoteJid, { text: replyMessage.reply, mentions: replyMessage.mentions });
+    // Built-in ping reply for direct chats
+    if (!isGroup && !waMessage.key.fromMe && normalizedMsg.trim() === 'ping') {
+        const latency = Date.now() - Number(waMessage.messageTimestamp ?? 0);
+        await sock.sendMessage(remoteJid, { text: `pong, your latency is ${latency}ms` }).catch((e: any) => {
+            logger.warn('#persistMessage - failed to send ping reply', { error: e?.message });
+        });
+    }
+}
+
+async function applyRevoke(protocolMsg: proto.Message.IProtocolMessage, remoteJid: string) {
+    const revokedId = protocolMsg.key?.id;
+    if (!revokedId) return;
+    try {
+        const existing = await Messages.findOne({ where: { whatsapp_message_id: revokedId } });
+        if (existing) {
+            await existing.update({ revoked_at: new Date() });
+            return;
+        }
+        // Revoke arrived before original — insert a stub so the deletion is not lost.
+        await Messages.create({
+            whatsapp_message_id: revokedId,
+            remote_jid: remoteJid,
+            participant_jid: protocolMsg.key?.participant || null,
+            contact_id: null,
+            sender_contact_id: null,
+            group_id: null,
+            timestamp: Math.floor(Date.now() / 1000),
+            message_type: null,
+            message_text: null,
+            push_name_snapshot: null,
+            is_group: remoteJid.endsWith('@g.us'),
+            from_me: !!protocolMsg.key?.fromMe,
+            additional_data: { revoke_stub: true },
+            revoked_at: new Date(),
+        });
+    } catch (err: any) {
+        if (err?.name !== 'SequelizeUniqueConstraintError') {
+            logger.error('#applyRevoke - error applying revoke', { error: err.message, revokedId });
         }
     }
 }
 
 async function storeUpdatedMessage(waMessageUpdate: WAMessageUpdate) {
     const whatsappMessageId = waMessageUpdate.key.id;
-    if (!whatsappMessageId) {
-        return;
-    }
+    if (!whatsappMessageId) return;
 
     try {
-        // Fetch the existing message to copy its metadata
         const existingMessage = await Messages.findOne({ where: { whatsapp_message_id: whatsappMessageId } });
-        if (!existingMessage) {
-            return;
+        if (!existingMessage) return;
+
+        const updates: Record<string, any> = {};
+
+        // Status updates (sent / delivered / read / played / error)
+        if (typeof waMessageUpdate.update.status === 'number') {
+            const statusName = proto.WebMessageInfo.Status[waMessageUpdate.update.status];
+            if (statusName) updates.status = statusName;
         }
 
-        // Extract updated message content if available
+        // Content updates (edits / payload changes)
         const updatedMessage = waMessageUpdate.update.message;
-        if (!updatedMessage) {
-            return;
+        if (updatedMessage) {
+            const actualMessage = updatedMessage.editedMessage?.message || updatedMessage;
+            const normalizedMsg = normalizedMessage(actualMessage);
+            const messageType = getContentType(actualMessage as any) || null;
+
+            // Handle protocolMessage: capture REVOKE; drop other subtypes
+            if (messageType === 'protocolMessage') {
+                const protocolMsg = actualMessage?.protocolMessage;
+                if (protocolMsg?.type === proto.Message.ProtocolMessage.Type.REVOKE) {
+                    await applyRevoke(protocolMsg, existingMessage.remote_jid);
+                }
+            } else if (messageType || (normalizedMsg && normalizedMsg.trim().length > 0)) {
+                // Real content update — treat as edit. Push prior state into edit_history.
+                const fakeWAMessage: WAMessage = {
+                    key: waMessageUpdate.key,
+                    message: actualMessage,
+                    messageTimestamp: waMessageUpdate.update.messageTimestamp,
+                };
+                const prior = existingMessage.additional_data || {};
+                const history = Array.isArray(prior.edit_history) ? prior.edit_history : [];
+                history.push({
+                    edited_at: new Date().toISOString(),
+                    message_type: existingMessage.message_type,
+                    message_text: existingMessage.message_text,
+                    additional_data: { ...prior, edit_history: undefined },
+                });
+                updates.message_type = messageType || existingMessage.message_type;
+                updates.message_text = normalizedMsg || existingMessage.message_text;
+                updates.timestamp = Number(waMessageUpdate.update.messageTimestamp) || existingMessage.timestamp;
+                updates.additional_data = { ...buildAdditionalData(fakeWAMessage), edit_history: history };
+            }
         }
 
-        // Check if this is an edit (editedMessage wrapper) or a regular update
-        const actualMessage = updatedMessage.editedMessage?.message || updatedMessage;
-        const normalizedMsg = normalizedMessage(actualMessage);
-        const messageType = getContentType(actualMessage as any) || null;
-
-        // Ignore events where both message_type and message_text are effectively null/empty
-        if (!messageType && (!normalizedMsg || normalizedMsg.trim().length === 0)) {
-            return;
+        if (Object.keys(updates).length > 0) {
+            await existingMessage.update(updates);
         }
-
-        // Drop protocolMessage events (deletes/ephemeral toggles, etc.)
-        if (messageType === 'protocolMessage') {
-            return;
-        }
-
-        // Build additional_data for the updated message
-        const fakeWAMessage: WAMessage = {
-            key: waMessageUpdate.key,
-            message: actualMessage,
-            messageTimestamp: waMessageUpdate.update.messageTimestamp,
-        };
-
-        // Create a new record with the updated content (stores duplicate for history)
-        await Messages.create({
-            whatsapp_message_id: whatsappMessageId,
-            remote_jid: existingMessage.remote_jid,
-            participant_jid: existingMessage.participant_jid,
-            contact_id: existingMessage.contact_id,
-            sender_contact_id: existingMessage.sender_contact_id,
-            group_id: existingMessage.group_id,
-            timestamp: Number(waMessageUpdate.update.messageTimestamp) || existingMessage.timestamp,
-            message_type: messageType || existingMessage.message_type,
-            message_text: normalizedMsg || existingMessage.message_text,
-            push_name_snapshot: existingMessage.push_name_snapshot,
-            is_group: existingMessage.is_group,
-            additional_data: buildAdditionalData(fakeWAMessage),
-        });
     } catch (err: any) {
-        // Ignore duplicate insert errors based on unique constraints if any
-        if (err?.name === 'SequelizeUniqueConstraintError') {
-            logger.info(`#storeUpdatedMessage - duplicate message insert ignored ${whatsappMessageId}`);
-        } else {
-            logger.error('#storeUpdatedMessage - error storing updated message', {
-                messageId: whatsappMessageId,
-                error: err.message,
-                stack: err.stack,
-                name: err.name,
-                details: err
-            });
-        }
+        logger.error('#storeUpdatedMessage - error updating message', {
+            messageId: whatsappMessageId,
+            error: err.message,
+            stack: err.stack,
+            name: err.name,
+        });
     }
 }
 

@@ -33,6 +33,12 @@ import messageRoutes from './routes/message';
 app.use('/api/message', messageRoutes);
 import scheduleRoutes from './routes/schedule';
 app.use('/api/schedule', scheduleRoutes);
+import contactRoutes from './routes/contact';
+app.use('/api/contacts', contactRoutes);
+import groupRoutes from './routes/group';
+app.use('/api/groups', groupRoutes);
+import profileRoutes from './routes/profile';
+app.use('/api', profileRoutes);
 
 app.listen(PORT, () => {
   logger.info(`#main-process - Server is running on port ${PORT}`);

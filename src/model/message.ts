@@ -16,12 +16,15 @@ interface MessageAttributes {
   message_text: string | null;
   push_name_snapshot: string | null;
   is_group: boolean;
+  from_me: boolean;
+  status: string | null;
   additional_data: Record<string, any> | null;
+  revoked_at: Date | null;
   created_at?: Date;
   updated_at?: Date;
 }
 
-type MessageCreationAttributes = Optional<MessageAttributes, "id" | "participant_jid" | "contact_id" | "sender_contact_id" | "group_id" | "message_type" | "message_text" | "push_name_snapshot" | "additional_data">;
+type MessageCreationAttributes = Optional<MessageAttributes, "id" | "participant_jid" | "contact_id" | "sender_contact_id" | "group_id" | "message_type" | "message_text" | "push_name_snapshot" | "additional_data" | "revoked_at" | "status">;
 
 export class Messages extends Model<MessageAttributes, MessageCreationAttributes> implements MessageAttributes {
   declare id: string;
@@ -36,7 +39,10 @@ export class Messages extends Model<MessageAttributes, MessageCreationAttributes
   declare message_text: string | null;
   declare push_name_snapshot: string | null;
   declare is_group: boolean;
+  declare from_me: boolean;
+  declare status: string | null;
   declare additional_data: Record<string, any> | null;
+  declare revoked_at: Date | null;
   declare readonly created_at: Date;
   declare readonly updated_at: Date;
 }
@@ -51,6 +57,7 @@ Messages.init(
     whatsapp_message_id: {
       type: DataTypes.STRING,
       allowNull: false,
+      unique: true,
     },
     remote_jid: {
       type: DataTypes.STRING,
@@ -98,8 +105,20 @@ Messages.init(
       type: DataTypes.BOOLEAN,
       allowNull: false,
     },
+    from_me: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+    },
+    status: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+    },
     additional_data: {
       type: DataTypes.JSONB as any,
+      allowNull: true,
+    },
+    revoked_at: {
+      type: DataTypes.DATE,
       allowNull: true,
     },
   },
@@ -110,11 +129,14 @@ Messages.init(
     timestamps: true,
     underscored: true,
     indexes: [
-      { fields: ["whatsapp_message_id"] },
+      { unique: true, fields: ["whatsapp_message_id"] },
       { fields: ["remote_jid"] },
       { fields: ["timestamp"] },
       { fields: ["contact_id"] },
       { fields: ["group_id"] },
+      { fields: ["revoked_at"] },
+      { fields: ["status"] },
+      { fields: ["from_me"] },
     ],
   }
 );
