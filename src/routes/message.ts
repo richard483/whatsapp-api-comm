@@ -1,6 +1,6 @@
 import express from 'express';
 import { Op } from 'sequelize';
-import { sendMessageToContact, sendMessageToGroup } from '../messageService';
+import { sendMediaToContact, sendMediaToGroup, sendMessageToContact, sendMessageToGroup } from '../messageService';
 import { Messages } from '../model/message';
 import { getWaSocket } from '../config/baileys-config';
 import logger from '../logger';
@@ -122,6 +122,44 @@ router.post('/send-group', async (req, res) => {
       type: err?.type || 'InternalError',
       group_id,
       message,
+      stack: err?.stack || undefined,
+    });
+  }
+});
+
+// POST /api/message/send-media
+// Body: { contact_id?: string, group_id?: string, media_base64: string, mimetype: string,
+//         file_name?: string, caption?: string, as_document?: boolean }
+router.post('/send-media', async (req, res) => {
+  const { contact_id, group_id, media_base64, mimetype, file_name, caption, as_document } = req.body || {};
+  if ((!contact_id && !group_id) || !media_base64 || !mimetype) {
+    return res.status(400).json({ error: 'Missing contact_id/group_id, media_base64, or mimetype' });
+  }
+  if (contact_id && group_id) {
+    return res.status(400).json({ error: 'Use either contact_id or group_id, not both' });
+  }
+
+  try {
+    const media = Buffer.from(String(media_base64), 'base64');
+    if (!media.length) return res.status(400).json({ error: 'media_base64 decoded to an empty buffer' });
+
+    const result = contact_id
+      ? await sendMediaToContact(contact_id, media, mimetype, file_name, caption, !!as_document)
+      : await sendMediaToGroup(group_id, media, mimetype, file_name, caption, !!as_document);
+
+    if (result.success) {
+      return res.json({ success: true, message_id: result.messageId });
+    }
+    return res.status(500).json({
+      error: result.error,
+      details: result.details,
+      type: result.details?.type || 'MediaSendError',
+    });
+  } catch (err: any) {
+    logger.error(`Unexpected error sending media - ${err?.message}`);
+    return res.status(500).json({
+      error: err?.message || 'Unexpected error',
+      type: err?.type || 'InternalError',
       stack: err?.stack || undefined,
     });
   }
