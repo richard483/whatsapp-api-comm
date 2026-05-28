@@ -41,7 +41,22 @@ import groupRoutes from './routes/group';
 app.use('/api/groups', groupRoutes);
 import profileRoutes from './routes/profile';
 app.use('/api', profileRoutes);
+import chatRoutes from './routes/chat';
+app.use('/api/chat', chatRoutes);
+import privacyRoutes from './routes/privacy';
+app.use('/api/privacy', privacyRoutes);
+
+// Swagger UI + raw spec
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './config/swagger';
+app.get('/api-docs.json', (_req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
+});
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { explorer: true }));
 
 app.listen(PORT, () => {
   logger.info(`#main-process - Server is running on port ${PORT}`);
+  logger.info(`#main-process - Swagger UI:   http://localhost:${PORT}/api-docs`);
+  logger.info(`#main-process - OpenAPI spec: http://localhost:${PORT}/api-docs.json`);
 });

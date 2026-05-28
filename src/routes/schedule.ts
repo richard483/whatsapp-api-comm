@@ -1,3 +1,45 @@
+/**
+ * @openapi
+ * /api/schedule:
+ *   get:
+ *     tags: [schedule]
+ *     summary: List all scheduled messages
+ *     responses: { 200: { description: OK } }
+ *   post:
+ *     tags: [schedule]
+ *     summary: Schedule an outbound message
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [contactId, message, scheduledDate, scheduledTime, timeZone, creatorUserId]
+ *             properties:
+ *               contactId: { type: string }
+ *               message: { type: string }
+ *               scheduledDate: { type: string, example: "2026-06-01" }
+ *               scheduledTime: { type: string, example: "14:30" }
+ *               timeZone: { type: string, example: "GMT+07" }
+ *               creatorUserId: { type: string }
+ *     responses: { 201: { description: Created } }
+ * /api/schedule/{id}:
+ *   get:
+ *     tags: [schedule]
+ *     summary: Get a scheduled message
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+ *     responses: { 200: { description: OK }, 404: { description: Not found } }
+ *   put:
+ *     tags: [schedule]
+ *     summary: Replace fields on a scheduled message
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+ *     responses: { 200: { description: OK } }
+ *   delete:
+ *     tags: [schedule]
+ *     summary: Delete a scheduled message
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+ *     responses: { 200: { description: OK } }
+ */
 import express from 'express';
 import ScheduledMessage from '../model/scheduledMessage';
 const router = express.Router();

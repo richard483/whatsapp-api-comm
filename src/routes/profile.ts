@@ -1,3 +1,30 @@
+/**
+ * @openapi
+ * /api/profile:
+ *   get:
+ *     tags: [profile]
+ *     summary: Get the bot's own WhatsApp identity (jid, lid, pushName, picture, status)
+ *     responses: { 200: { description: OK }, 503: { description: Not connected } }
+ *   patch:
+ *     tags: [profile]
+ *     summary: Update bot profile fields
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string }
+ *               status: { type: string }
+ *               pictureUrl: { type: string, nullable: true, description: "URL to set, null to remove, omit to skip" }
+ *     responses: { 200: { description: OK } }
+ * /api/status:
+ *   get:
+ *     tags: [profile]
+ *     summary: Current Baileys connection state (incl. last QR if pairing)
+ *     responses: { 200: { description: OK } }
+ */
 import express from 'express';
 import { getWaSocket, getConnectionStatus } from '../config/baileys-config';
 import logger from '../logger';
