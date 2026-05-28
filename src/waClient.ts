@@ -3,6 +3,22 @@ import { getWaSocket } from './config/baileys-config';
 import { Messages } from './model/message';
 import { Contacts } from './model/contact';
 import { Groups } from './model/group';
+import { proto } from '@whiskeysockets/baileys';
+
+// Encode a sendMessage result (a WAMessage / WebMessageInfo) to a base64 proto so
+// that downstream endpoints (GET /:id/media, POST /:id/forward) can reconstruct
+// the original message and decrypt media or forward content. Returns null if
+// the result is missing or cannot be serialized.
+function encodeRawProto(result: any): string | null {
+  if (!result) return null;
+  try {
+    const bytes = proto.WebMessageInfo.encode(result).finish();
+    return Buffer.from(bytes).toString('base64');
+  } catch (err: any) {
+    logger.warn(`#encodeRawProto - failed to encode send result - ${err?.message}`);
+    return null;
+  }
+}
 
 type MediaSendParams = {
   buffer: Buffer;
@@ -118,7 +134,7 @@ async function persistOutbound(jid: string, text: string, result: any) {
       is_group: isGroup,
       from_me: true,
       status: 'PENDING',
-      additional_data: { content_type: 'conversation', source: 'api' },
+      additional_data: { content_type: 'conversation', source: 'api', raw_proto: encodeRawProto(result) },
     });
   } catch (err: any) {
     // The Baileys upsert echo can win the race and insert first — that's fine.
@@ -158,6 +174,7 @@ async function persistOutboundMedia(jid: string, params: MediaSendParams, result
       additional_data: {
         content_type: messageType,
         source: 'api',
+        raw_proto: encodeRawProto(result),
         media: {
           mimetype: params.mimetype,
           file_name: params.fileName || null,
