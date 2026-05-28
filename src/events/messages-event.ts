@@ -105,6 +105,15 @@ async function ensureGroup(sock: WASocket, jid: string): Promise<string | null> 
     return group.id;
 }
 
+function encodeRawProto(message: WAMessage): string | null {
+    try {
+        const bytes = proto.WebMessageInfo.encode(message as any).finish();
+        return Buffer.from(bytes).toString('base64');
+    } catch {
+        return null;
+    }
+}
+
 function buildAdditionalData(message: WAMessage) {
     const type = getContentType((message.message || undefined) as any) || null;
     const mentions: string[] = (message.message?.extendedTextMessage?.contextInfo?.mentionedJid || []).map(j => j);
@@ -131,6 +140,8 @@ function buildAdditionalData(message: WAMessage) {
             is_view_once: !!(message.message?.viewOnceMessage || message.message?.imageMessage?.viewOnce || message.message?.videoMessage?.viewOnce),
             is_ephemeral: !!(message.message?.ephemeralMessage),
         },
+        // Persisted so download/forward can rebuild the full WAMessage later.
+        raw_proto: encodeRawProto(message),
     };
 }
 

@@ -1,3 +1,58 @@
+/**
+ * @openapi
+ * /api/contacts:
+ *   get:
+ *     tags: [contacts]
+ *     summary: List local contacts
+ *     parameters:
+ *       - { in: query, name: limit,  schema: { type: integer, default: 50, maximum: 200 } }
+ *       - { in: query, name: offset, schema: { type: integer, default: 0 } }
+ *       - { in: query, name: q,      schema: { type: string }, description: "case-insensitive substring search on name/phone" }
+ *     responses: { 200: { description: OK } }
+ *   post:
+ *     tags: [contacts]
+ *     summary: Add a contact after verifying the number is on WhatsApp
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [phone_number]
+ *             properties:
+ *               phone_number: { type: string }
+ *               display_name: { type: string }
+ *     responses: { 200: { description: existed }, 201: { description: created }, 404: { description: not on WhatsApp } }
+ * /api/contacts/check:
+ *   get:
+ *     tags: [contacts]
+ *     summary: Check if a phone number has a WhatsApp account (no persistence)
+ *     parameters: [{ in: query, name: phone_number, required: true, schema: { type: string } }]
+ *     responses: { 200: { description: OK } }
+ * /api/contacts/{id}:
+ *   get:
+ *     tags: [contacts]
+ *     summary: Fetch a contact by id
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+ *     responses: { 200: { description: OK }, 404: { description: Not found } }
+ *   patch:
+ *     tags: [contacts]
+ *     summary: Update local-only fields (display_name, description)
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { display_name: { type: string }, description: { type: string } }
+ *     responses: { 200: { description: OK } }
+ *   delete:
+ *     tags: [contacts]
+ *     summary: Remove a contact from the local DB only
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+ *     responses: { 200: { description: OK } }
+ */
 import express from 'express';
 import { Op } from 'sequelize';
 import { Contacts } from '../model/contact';

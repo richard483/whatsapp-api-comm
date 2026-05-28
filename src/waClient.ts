@@ -12,11 +12,30 @@ type MediaSendParams = {
   asDocument?: boolean;
 };
 
+type SendOptions = {
+  quoted?: any; // WAMessage to quote (reply)
+};
+
+// Build a stub WAMessage from a stored DB row to be used as the `quoted` field on sendMessage.
+export async function buildQuotedFromRowId(messageId: string): Promise<any | null> {
+  const row = await Messages.findByPk(messageId);
+  if (!row) return null;
+  return {
+    key: {
+      remoteJid: row.remote_jid,
+      fromMe: row.from_me,
+      id: row.whatsapp_message_id,
+      participant: row.participant_jid || undefined,
+    },
+    message: row.message_text ? { conversation: row.message_text } : {},
+  };
+}
+
 // Send a text message to a WhatsApp JID and persist an outbound row immediately.
-export async function sendTextMessage(jid: string, text: string) {
+export async function sendTextMessage(jid: string, text: string, options: SendOptions = {}) {
   const client = getWaSocket();
   try {
-    const result = await client.sendMessage(jid, { text });
+    const result = await client.sendMessage(jid, { text }, options.quoted ? { quoted: options.quoted } : undefined);
     const messageId = result?.key?.id || null;
     logger.info(`Text message sent to JID: ${jid}, messageId: ${messageId}`);
 
@@ -35,16 +54,15 @@ export async function sendTextMessage(jid: string, text: string) {
   }
 }
 
-// Send an image/document to a WhatsApp JID and persist an outbound row immediately.
-export async function sendMediaMessage(jid: string, params: MediaSendParams) {
+// Send an image/document/video to a WhatsApp JID and persist an outbound row immediately.
+export async function sendMediaMessage(jid: string, params: MediaSendParams, options: SendOptions = {}) {
   const client = getWaSocket();
   const isImage = params.mimetype.startsWith('image/') && !params.asDocument;
-  const payload = isImage
-    ? {
-        image: params.buffer,
-        mimetype: params.mimetype,
-        caption: params.caption || undefined,
-      }
+  const isVideo = params.mimetype.startsWith('video/') && !params.asDocument;
+  const payload: any = isImage
+    ? { image: params.buffer, mimetype: params.mimetype, caption: params.caption || undefined }
+    : isVideo
+    ? { video: params.buffer, mimetype: params.mimetype, caption: params.caption || undefined }
     : {
         document: params.buffer,
         mimetype: params.mimetype,
@@ -53,12 +71,13 @@ export async function sendMediaMessage(jid: string, params: MediaSendParams) {
       };
 
   try {
-    const result = await client.sendMessage(jid, payload);
+    const result = await client.sendMessage(jid, payload, options.quoted ? { quoted: options.quoted } : undefined);
     const messageId = result?.key?.id || null;
     logger.info(`Media message sent to JID: ${jid}, messageId: ${messageId}`);
 
+    const recordedType = isImage ? 'imageMessage' : isVideo ? 'videoMessage' : 'documentMessage';
     if (result?.key?.id) {
-      await persistOutboundMedia(jid, params, result, isImage ? 'imageMessage' : 'documentMessage');
+      await persistOutboundMedia(jid, params, result, recordedType);
     }
 
     return { success: true, messageId };
@@ -150,5 +169,96 @@ async function persistOutboundMedia(jid: string, params: MediaSendParams, result
     if (err?.name !== 'SequelizeUniqueConstraintError') {
       logger.warn(`#persistOutboundMedia - failed to insert outbound row - ${err?.message}`);
     }
+  }
+}
+
+// Send a voice note / audio. ptt=true sends as voice note.
+export async function sendAudioMessage(jid: string, buffer: Buffer, mimetype: string, ptt: boolean, options: SendOptions = {}) {
+  const client = getWaSocket();
+  try {
+    const result = await client.sendMessage(
+      jid,
+      { audio: buffer, mimetype: mimetype || 'audio/ogg; codecs=opus', ptt: !!ptt },
+      options.quoted ? { quoted: options.quoted } : undefined,
+    );
+    return { success: true, messageId: result?.key?.id || null };
+  } catch (error: any) {
+    logger.error(`Failed to send audio to JID: ${jid} - ${error?.message}`);
+    return { success: false, error: error?.message || 'Failed to send audio', details: error };
+  }
+}
+
+// Send a reaction to an existing WAMessage key. Empty emoji removes the reaction.
+export async function sendReaction(targetKey: any, emoji: string) {
+  const client = getWaSocket();
+  try {
+    const result = await client.sendMessage(targetKey.remoteJid, {
+      react: { text: emoji || '', key: targetKey },
+    });
+    return { success: true, messageId: result?.key?.id || null };
+  } catch (error: any) {
+    return { success: false, error: error?.message || 'Failed to send reaction', details: error };
+  }
+}
+
+// Forward an already-received WAMessage (rebuilt from raw_proto) to a new JID.
+export async function forwardWAMessage(toJid: string, waMessage: any) {
+  const client = getWaSocket();
+  try {
+    const result = await client.sendMessage(toJid, { forward: waMessage });
+    return { success: true, messageId: result?.key?.id || null };
+  } catch (error: any) {
+    return { success: false, error: error?.message || 'Failed to forward', details: error };
+  }
+}
+
+export async function sendPoll(jid: string, name: string, values: string[], selectableCount: number = 1) {
+  const client = getWaSocket();
+  try {
+    const result = await client.sendMessage(jid, {
+      poll: { name, values, selectableCount: Math.max(1, selectableCount) },
+    } as any);
+    return { success: true, messageId: result?.key?.id || null };
+  } catch (error: any) {
+    return { success: false, error: error?.message || 'Failed to send poll', details: error };
+  }
+}
+
+export async function sendLocation(jid: string, latitude: number, longitude: number, name?: string, address?: string) {
+  const client = getWaSocket();
+  try {
+    const result = await client.sendMessage(jid, {
+      location: {
+        degreesLatitude: latitude,
+        degreesLongitude: longitude,
+        name: name || undefined,
+        address: address || undefined,
+      },
+    });
+    return { success: true, messageId: result?.key?.id || null };
+  } catch (error: any) {
+    return { success: false, error: error?.message || 'Failed to send location', details: error };
+  }
+}
+
+// Send a contact card. Pass either a ready-made vcard or { displayName, phoneNumber } and we will build one.
+export async function sendContactCard(
+  jid: string,
+  contacts: Array<{ displayName: string; phoneNumber?: string; vcard?: string }>,
+) {
+  const client = getWaSocket();
+  try {
+    const built = contacts.map((c) => ({
+      displayName: c.displayName,
+      vcard:
+        c.vcard ||
+        `BEGIN:VCARD\nVERSION:3.0\nFN:${c.displayName}\nTEL;type=CELL;type=VOICE;waid=${(c.phoneNumber || '').replace(/[^\d]/g, '')}:${c.phoneNumber || ''}\nEND:VCARD`,
+    }));
+    const result = await client.sendMessage(jid, {
+      contacts: { displayName: built[0]?.displayName || 'Contacts', contacts: built },
+    });
+    return { success: true, messageId: result?.key?.id || null };
+  } catch (error: any) {
+    return { success: false, error: error?.message || 'Failed to send contact', details: error };
   }
 }
