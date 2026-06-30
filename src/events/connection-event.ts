@@ -1,6 +1,13 @@
 import { ConnectionState, DisconnectReason, WASocket } from "@whiskeysockets/baileys";
 import logger from '../logger';
 
+let reconnectTimer: NodeJS.Timeout | null = null;
+
+function getReconnectDelayMs() {
+    const configured = Number(process.env.WA_RECONNECT_DELAY_MS);
+    return Number.isFinite(configured) && configured > 0 ? configured : 5000;
+}
+
 function handleConnectionUpdate(sock: WASocket, update: Partial<ConnectionState>, connectToWhatsApp: () => Promise<void>) {
     const { connection, lastDisconnect } = update;
     if (connection === 'close') {
@@ -11,9 +18,22 @@ function handleConnectionUpdate(sock: WASocket, update: Partial<ConnectionState>
         }
         logger.warn('#handleConnectionUpdate - Connection closed', { error: lastDisconnect?.error, shouldReconnect });
         if (shouldReconnect) {
-            connectToWhatsApp();
+            if (reconnectTimer) return;
+
+            const delayMs = getReconnectDelayMs();
+            logger.info(`#handleConnectionUpdate - reconnecting in ${delayMs}ms`);
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                connectToWhatsApp().catch((err: any) => {
+                    logger.error(`#handleConnectionUpdate - reconnect failed - ${err?.message}`);
+                });
+            }, delayMs);
         }
     } else if (connection === 'open') {
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
         logger.info('#handleConnectionUpdate - Connection opened successfully');
     }
 }
