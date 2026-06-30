@@ -17,7 +17,7 @@ function getAuthDir() {
   return path.resolve(process.env.WA_AUTH_DIR || path.join(process.cwd(), 'auth_info_baileys'));
 }
 
-async function requestPairingCodeIfNeeded(client: WASocket, registered: boolean) {
+async function requestPairingCodeIfNeeded(client: WASocket, registered: boolean, saveCreds: () => Promise<void>) {
   if (registered || pairingCodeRequested) return;
 
   const phoneNumber = process.env.WA_NUMBER?.replace(/\D/g, '');
@@ -28,11 +28,19 @@ async function requestPairingCodeIfNeeded(client: WASocket, registered: boolean)
 
   try {
     pairingCodeRequested = true;
+    logger.info(`#connectToWhatsApp - waiting for WhatsApp socket before requesting pairing code for ${phoneNumber}`);
+    await client.waitForSocketOpen();
     const code = await client.requestPairingCode(phoneNumber);
     lastPairingCode = code;
     logger.info(`#connectToWhatsApp - WhatsApp pairing code for ${phoneNumber}: ${code}`);
   } catch (err: any) {
     pairingCodeRequested = false;
+    const creds = client.authState.creds as any;
+    if (!client.authState.creds.registered) {
+      delete creds.me;
+      delete creds.pairingCode;
+      await saveCreds();
+    }
     logger.warn(`#connectToWhatsApp - failed to request pairing code - ${err?.message}`);
   }
 }
@@ -42,19 +50,27 @@ async function connectToWhatsApp() {
   fs.mkdirSync(authDir, { recursive: true });
 
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
+  if (!state.creds.registered && (state.creds.me || state.creds.pairingCode)) {
+    const creds = state.creds as any;
+    delete creds.me;
+    delete creds.pairingCode;
+    await saveCreds();
+    lastPairingCode = null;
+    logger.warn('#connectToWhatsApp - cleared incomplete WhatsApp pairing credentials');
+  }
+
   const { version, isLatest } = await fetchLatestBaileysVersion();
   logger.info(`#connectToWhatsApp - using WA v${version.join('.')}, isLatest: ${isLatest}`);
   logger.info(`#connectToWhatsApp - auth directory: ${authDir}`);
 
   connectionState = 'connecting';
+  const isRegistered = !!state.creds.registered;
 
   sock = makeWASocket({
     auth: state,
     version,
-    // enable full history sync automatically on first connect
-    syncFullHistory: true,
-    // emulate desktop for larger history chunks
-    browser: Browsers.macOS('Desktop'),
+    syncFullHistory: isRegistered,
+    browser: isRegistered ? Browsers.macOS('Desktop') : Browsers.ubuntu('Chrome'),
     markOnlineOnConnect: false,
   });
 
@@ -64,7 +80,7 @@ async function connectToWhatsApp() {
     }
     if (update.qr) {
       lastQr = update.qr;
-      requestPairingCodeIfNeeded(sock!, !!state.creds.registered).catch((err: any) => {
+      requestPairingCodeIfNeeded(sock!, isRegistered, saveCreds).catch((err: any) => {
         logger.warn(`#connectToWhatsApp - failed to request pairing code - ${err?.message}`);
       });
     } else if (update.connection === 'open') {
