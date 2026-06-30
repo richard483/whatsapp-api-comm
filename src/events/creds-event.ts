@@ -9,7 +9,7 @@ function handleCredsEvent(sock: WASocket, saveCreds: () => Promise<void>) {
         const { connection, lastDisconnect, qr } = update
         logger.info('#handleCredsEvent - Connection update', { connection, lastDisconnect });
         if (qr) {
-            console.log(QRCode.generate(qr, { small: true }));
+            QRCode.generate(qr, { small: true });
             logger.info('#handleCredsEvent - QR code generated for scanning');
         }
     });

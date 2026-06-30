@@ -69,12 +69,18 @@ async function connectToWhatsApp() {
 
   connectionState = 'connecting';
   const hasUsableSession = !!state.creds.registered || hasPairingSuccessCreds(state.creds);
+  const isFullyRegistered = !!state.creds.registered;
+  logger.info('#connectToWhatsApp - auth state', {
+    registered: isFullyRegistered,
+    hasPairingSuccessCreds: hasPairingSuccessCreds(state.creds),
+    hasMe: !!state.creds.me,
+  });
 
   sock = makeWASocket({
     auth: state,
     version,
-    syncFullHistory: hasUsableSession,
-    browser: hasUsableSession ? Browsers.macOS('Desktop') : Browsers.ubuntu('Chrome'),
+    syncFullHistory: false,
+    browser: Browsers.ubuntu('Chrome'),
     markOnlineOnConnect: false,
   });
 
