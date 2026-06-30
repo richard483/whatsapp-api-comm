@@ -11,13 +11,14 @@ let connectionState: ConnState = 'connecting';
 let lastQr: string | null = null;
 let lastDisconnectReason: number | null = null;
 let lastPairingCode: string | null = null;
+let pairingCodeRequested = false;
 
 function getAuthDir() {
   return path.resolve(process.env.WA_AUTH_DIR || path.join(process.cwd(), 'auth_info_baileys'));
 }
 
 async function requestPairingCodeIfNeeded(client: WASocket, registered: boolean) {
-  if (registered) return;
+  if (registered || pairingCodeRequested) return;
 
   const phoneNumber = process.env.WA_NUMBER?.replace(/\D/g, '');
   if (!phoneNumber) {
@@ -26,10 +27,12 @@ async function requestPairingCodeIfNeeded(client: WASocket, registered: boolean)
   }
 
   try {
+    pairingCodeRequested = true;
     const code = await client.requestPairingCode(phoneNumber);
     lastPairingCode = code;
     logger.info(`#connectToWhatsApp - WhatsApp pairing code for ${phoneNumber}: ${code}`);
   } catch (err: any) {
+    pairingCodeRequested = false;
     logger.warn(`#connectToWhatsApp - failed to request pairing code - ${err?.message}`);
   }
 }
@@ -61,8 +64,13 @@ async function connectToWhatsApp() {
     }
     if (update.qr) {
       lastQr = update.qr;
+      requestPairingCodeIfNeeded(sock!, !!state.creds.registered).catch((err: any) => {
+        logger.warn(`#connectToWhatsApp - failed to request pairing code - ${err?.message}`);
+      });
     } else if (update.connection === 'open') {
       lastQr = null;
+      lastPairingCode = null;
+      pairingCodeRequested = false;
     }
     const status = (update.lastDisconnect?.error as any)?.output?.statusCode;
     if (typeof status === 'number') {
@@ -71,7 +79,6 @@ async function connectToWhatsApp() {
   });
 
   handleEvent(sock, connectToWhatsApp, saveCreds);
-  await requestPairingCodeIfNeeded(sock, !!state.creds.registered);
 }
 
 function getWaSocket(): WASocket {
